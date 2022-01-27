@@ -1,3 +1,4 @@
+const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -40,7 +41,7 @@
         out.list[i] = a[i].value
       }
 
-      fetch('https://httpbin.org/post', {
+      fetch('/', {
         method: 'POST',
         headers: {
           'content-type': 'application/json'
@@ -50,7 +51,7 @@
     }
 
     async function getAndUpdateList() {
-      let response = await fetch('http://192.168.0.17/list')
+      let response = await fetch('/list')
       let data = await response.json()
       console.log(data)
 
@@ -74,3 +75,4 @@
   <button onclick="save()">Save</button>
 </body>
 </html>
+)rawliteral";

@@ -5,27 +5,9 @@
 #include <ArduinoJson.h>
 #include <vector>
 #include "custom.h"
+#include "webpage.h"
 ESP8266WebServer server(80);
 std::vector<String> addresses = ADDRESSES;
-
-void setup() {
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-
-  beginWifi();
-  server.begin();
-  server.on("/", HTTP_GET, showWebpage);
-  server.on("/", HTTP_POST, updateList);
-}
-
-void loop() {
-  if (digitalRead(BUTTON_PIN) == HIGH) {
-    for (String address : addresses) {
-      makeGetRequest(address);
-    }
-  }
-
-  server.handleClient();
-}
 
 void beginWifi() {
   Log("Connecting to Wifi");
@@ -36,97 +18,101 @@ void beginWifi() {
     delay(500);
     Log(".");
   }
+  Log("\nConnected to wifi, address: ");
+  Log(WiFi.localIP());
 }
 
 int makeGetRequest(String address) {
   HTTPClient http;
   int code = -1;
 
-  Log("Making GET request to: " + address);
+  Log("\nMaking GET request to: " + address);
 
   if(http.begin(address)){
     code = http.GET();
     http.end();
   }
   else {
-    Log("Request to '" + address + "' failed!");
+    Log("\nRequest to '" + address + "' failed!");
   }
   return code;
 }
 
 void showWebpage() {
+  Log("\nWeb interface accessed");
   server.send(200, "text/html", index_html);
 }
 
 void updateList() {
-  String json = server.arg('plain');
-  // {"list":["a","b","c", ...]}
-  DynamicJsonDocument doc(128);
+  Log("\nUpdating list of addresses.");
+  String json = server.arg("plain");
+  /* {
+        "list": [
+          "a",
+          "b",
+          ...
+          ],
+        "size": 2
+      } */
+  StaticJsonDocument<1024> doc;
   DeserializationError dszErr = deserializeJson(doc, json.c_str());
 
   if(dszErr) {
     Log("Deserialization error!");
+    server.send(500);
     return;
   }
 
+  int size = doc["size"].as<int>();
+  addresses.resize(size);
 
+  char buffer[50];
+  for(int i = 0; i < size; i++) {
+    addresses[i] = doc["list"][i].as<String>();
+
+    sprintf(buffer, "%s", addresses[i].c_str());
+    Log("\n");
+    Log(buffer);
+  }
+  server.send(202);
 }
 
-//page
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      align-items: center;
-    }
-    li {
-      list-style-type: none;
-    }
-  </style>
-  <script>
-    function addListItem() {
-      let list = document.getElementById('list')
-      let entry = document.createElement('li')
-      let input = document.createElement('input')
-      input.type = 'text'
-      entry.appendChild(input)
-      list.appendChild(entry)
-    }
+void sendList() {
+  Log("\nSending list of addresses.");
+  StaticJsonDocument<500> doc;
 
-    function save() {
-      let a = document.querySelectorAll('ul li input')
-      let out = { list: [] }
-      for (let i = 0; i < a.length; i++) {
-        out.list[i] = a[i].value
-      }
+  int size = addresses.size();
+  doc["size"] = size;
+  JsonArray list = doc.createNestedArray("list");
 
-      fetch('127.0.0.1', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(out)
-      })
+  for(int i = 0; i < size; i++) {
+    list.add(addresses[i]);
+  }
+
+  String out;
+  serializeJson(doc, out);
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", out);
+}
+
+void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  Serial.begin(115200);
+
+  beginWifi();
+  server.begin();
+  server.on("/", HTTP_GET, showWebpage);
+  server.on("/list", HTTP_GET, sendList);
+  server.on("/", HTTP_POST, updateList);
+}
+
+void loop() {
+  if (digitalRead(BUTTON_PIN) == LOW) { // improve
+    for (String address : addresses) {
+      makeGetRequest(address);
     }
-  </script>
-  <title>Edit</title>
-</head>
-<body>
-  <h1>
-    List of addresses
-  </h1>
-  <ul id="list">
-    <li>
-      <input type="text">
-    </li>
-  </ul>
-  <button onclick="addListItem()">Add</button>
-  <button onclick="save()">Save</button>
-</body>
-</html>
-)rawliteral";
+  }
+
+  server.handleClient();
+}
+

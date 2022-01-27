@@ -1,8 +1,8 @@
-#define WIFI_SSID "TurboWifi.2"
-#define WIFI_PASS "HovnoKleslo"
-#define ADDRESSES {"test", "ss"}
+#define WIFI_SSID ""
+#define WIFI_PASS ""
+#define ADDRESSES {"192.168.0.69", "192.168.0.420"}
 
-#define BUTTON_PIN 13
+#define BUTTON_PIN D3
 
 #define USE_LOGGING
 
