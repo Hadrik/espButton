@@ -26,14 +26,15 @@ int makeGetRequest(String address) {
   HTTPClient http;
   int code = -1;
 
-  Log("\nMaking GET request to: " + address);
+  Log("\nMaking GET request to: " + address + " ... ");
 
   if(http.begin(address)){
     code = http.GET();
     http.end();
+    Log("success!");
   }
   else {
-    Log("\nRequest to '" + address + "' failed!");
+    Log("fail!");
   }
   return code;
 }
@@ -95,6 +96,21 @@ void sendList() {
   server.send(200, "application/json", out);
 }
 
+ulong lastPress;
+void ICACHE_RAM_ATTR handleButtonPress() {
+  Log("\n\nButton pressed!");
+
+  if(millis() < lastPress) // millis() overflowed
+    lastPress = millis();
+  else if((lastPress + BUTTON_DEBOUCE_TIME_MS) > millis())
+    return;
+  
+  for (String address : addresses) {
+    makeGetRequest(address);
+  }
+  lastPress = millis();
+}
+
 void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.begin(115200);
@@ -104,15 +120,10 @@ void setup() {
   server.on("/", HTTP_GET, showWebpage);
   server.on("/list", HTTP_GET, sendList);
   server.on("/", HTTP_POST, updateList);
+
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonPress, FALLING);
 }
 
 void loop() {
-  if (digitalRead(BUTTON_PIN) == LOW) { // improve
-    for (String address : addresses) {
-      makeGetRequest(address);
-    }
-  }
-
   server.handleClient();
 }
-
