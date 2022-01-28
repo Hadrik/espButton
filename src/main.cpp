@@ -9,8 +9,10 @@
 #include "webpage.h"
 EasyButton button(BUTTON_PIN, BUTTON_DEBOUCE_TIME_MS,
                   BUTTON_ENABLE_PULLUP, BUTTON_ACTIVE_LOW);
+EasyButton button2(OPEN_SERVER_BUTTON_PIN);
 ESP8266WebServer server(80);
-std::vector<String> addresses = ADDRESSES;
+std::vector<String> addressesSingle = ADDRESSES_PRESS;
+std::vector<String> addressesDouble = ADDRESSES_HOLD;
 bool openServer = false;
 
 void beginWifi() {
@@ -49,49 +51,76 @@ void showWebpage() {
 }
 
 void updateList() {
+  digitalWrite(LED_BUILTIN, LOW);
   Log("\nUpdating list of addresses.");
   String json = server.arg("plain");
-  /* {
-        "list": [
-          "a",
-          "b",
-          ...
-          ],
-        "size": 2
-      } */
+  /*
+  {
+    "single": {
+      "list": [
+        "192.168.0."
+      ],
+      "size": 1
+    },
+    "double": {
+      "list": [
+        "192.168.0.",
+        "192.168.0."
+      ],
+      "size": 2
+    }
+  } */
   StaticJsonDocument<1024> doc;
   DeserializationError dszErr = deserializeJson(doc, json.c_str());
 
   if(dszErr) {
-    Log("Deserialization error!");
+    Log("Deserialization error!\n");
     server.send(500);
+    delay(300);
+    digitalWrite(LED_BUILTIN, HIGH);
     return;
   }
 
-  int size = doc["size"].as<int>();
-  addresses.resize(size);
+  int sizeSingle = doc["single"]["size"].as<int>();
+  int sizeDouble = doc["double"]["size"].as<int>();
+  addressesSingle.resize(sizeSingle);
+  addressesDouble.resize(sizeDouble);
 
-  char buffer[50];
-  for(int i = 0; i < size; i++) {
-    addresses[i] = doc["list"][i].as<String>();
+  Log("Single press: \n");
+  for(int i = 0; i < sizeSingle; i++) {
+    addressesSingle[i] = doc["single"]["list"][i].as<String>();
 
-    sprintf(buffer, "%s", addresses[i].c_str());
+    Log(addressesSingle[i].c_str());
     Log("\n");
-    Log(buffer);
+  }
+  Log("Double press: \n");
+  for(int i = 0; i < sizeDouble; i++) {
+    addressesDouble[i] = doc["double"]["list"][i].as<String>();
+
+    Log(addressesDouble[i].c_str());
+    Log("\n");
   }
   server.send(202);
+  delay(5);
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void sendList() {
   Log("\nSending list of addresses.");
-  StaticJsonDocument<500> doc;
+  StaticJsonDocument<1024> doc;
 
-  int size = addresses.size();
-  doc["size"] = size;
-  JsonArray list = doc.createNestedArray("list");
+  int sizeSingle = addressesSingle.size();
+  int sizeDouble = addressesDouble.size();
+  doc["single"]["size"] = sizeSingle;
+  doc["double"]["size"] = sizeDouble;
+  JsonArray listSingle = doc["single"].createNestedArray("list");
+  JsonArray listDouble = doc["double"].createNestedArray("list");
 
-  for(int i = 0; i < size; i++) {
-    list.add(addresses[i]);
+  for(int i = 0; i < sizeSingle; i++) {
+    listSingle.add(addressesSingle[i]);
+  }
+  for(int i = 0; i < sizeDouble; i++) {
+    listDouble.add(addressesDouble[i]);
   }
 
   String out;
@@ -100,23 +129,48 @@ void sendList() {
   server.send(200, "application/json", out);
 }
 
-void pressed() {
+void pressedSingle() {
+  digitalWrite(LED_BUILTIN, LOW);
   Log("\n\nShort press!");
-  for (String address : addresses) {
+  for (String address : addressesSingle) {
     makeGetRequest(address);
   }
+  delay(5);
+  digitalWrite(LED_BUILTIN, HIGH);
+}
+void pressedDouble() {
+  digitalWrite(LED_BUILTIN, LOW);
+  Log("\n\nLong press!");
+  for (String address : addressesDouble) {
+    makeGetRequest(address);
+  }
+  delay(5);
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 void held() {
   Log("\n\nLong press!");
   openServer = !openServer;
-  if(openServer)
+  if(openServer) {
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(150);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(150);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(150);
+    digitalWrite(LED_BUILTIN, HIGH);
     Log("\nServer opened");
-  else
+  } else {
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(150);
+    digitalWrite(LED_BUILTIN, HIGH);
     Log("\nServer closed");
+  }
 }
 
 void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
   Serial.begin(115200);
 
   beginWifi();
@@ -126,12 +180,15 @@ void setup() {
   server.on("/", HTTP_POST, updateList);
 
   button.begin();
-  button.onPressed(pressed);
-  button.onPressedFor(BUTTON_LONGPRESS_TIME_MS, held);
+  button2.begin();
+  button.onPressed(pressedSingle);
+  button.onPressedFor(BUTTON_HOLD_TIME_MS, pressedDouble);
+  button2.onPressedFor(OPEN_SERVER_BUTTON_LONGPRESS_TIME_MS, held);
 }
 
 void loop() {
   button.read();
+  button2.read();
   if(openServer)
     server.handleClient();
 }
