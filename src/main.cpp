@@ -3,11 +3,15 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
+#include <EasyButton.h>
 #include <vector>
 #include "custom.h"
 #include "webpage.h"
+EasyButton button(BUTTON_PIN, BUTTON_DEBOUCE_TIME_MS,
+                  BUTTON_ENABLE_PULLUP, BUTTON_ACTIVE_LOW);
 ESP8266WebServer server(80);
 std::vector<String> addresses = ADDRESSES;
+bool openServer = false;
 
 void beginWifi() {
   Log("Connecting to Wifi");
@@ -96,19 +100,19 @@ void sendList() {
   server.send(200, "application/json", out);
 }
 
-ulong lastPress;
-void ICACHE_RAM_ATTR handleButtonPress() {
-  Log("\n\nButton pressed!");
-
-  if(millis() < lastPress) // millis() overflowed
-    lastPress = millis();
-  else if((lastPress + BUTTON_DEBOUCE_TIME_MS) > millis())
-    return;
-  
+void pressed() {
+  Log("\n\nShort press!");
   for (String address : addresses) {
     makeGetRequest(address);
   }
-  lastPress = millis();
+}
+void held() {
+  Log("\n\nLong press!");
+  openServer = !openServer;
+  if(openServer)
+    Log("\nServer opened");
+  else
+    Log("\nServer closed");
 }
 
 void setup() {
@@ -121,9 +125,13 @@ void setup() {
   server.on("/list", HTTP_GET, sendList);
   server.on("/", HTTP_POST, updateList);
 
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonPress, FALLING);
+  button.begin();
+  button.onPressed(pressed);
+  button.onPressedFor(BUTTON_LONGPRESS_TIME_MS, held);
 }
 
 void loop() {
-  server.handleClient();
+  button.read();
+  if(openServer)
+    server.handleClient();
 }
